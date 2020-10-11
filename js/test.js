@@ -1,7 +1,7 @@
 var cameraScene, cameraTop, scene, renderer;
 var plane;
 
-var cubeGeo, cubeMaterial;
+var cubeMaterial;
 var rolloverMesh, rolloverMaterial;
 var objects = [];
 
@@ -10,6 +10,7 @@ let mainCamera;
 
 const frustrumSize = 1100;
 let startingPoint = null;
+let startingMesh;
 let hoverWall = [];
 let wallLength = 0;
 let wallCells = [];
@@ -23,12 +24,12 @@ animate();
 
 function init() {
     // main scene camera
-    cameraScene = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+    cameraScene = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 500, 10000);
     cameraScene.position.set(800, 800, 1300);
     cameraScene.lookAt(0, 0, 0);
 
     // topdown orthographic camera
-    cameraTop = new THREE.OrthographicCamera(...cameraCoords(), 0, 1000);
+    cameraTop = new THREE.OrthographicCamera(...cameraCoords(), 0, 5000);
     cameraTop.position.set(0, 500, 0);
     cameraTop.lookAt(0, 0, 0);
     mainCamera = cameraTop;
@@ -38,14 +39,16 @@ function init() {
     scene.background = new THREE.Color(0xF0F0F0);
 
     // voxels
-    cubeGeo = new THREE.BoxBufferGeometry(CELL_SIZE, 400, CELL_SIZE);
     cubeMaterial = new THREE.MeshLambertMaterial({ color: 0xFEB74C });
+    cubeSeethrough = new THREE.MeshLambertMaterial({ color: 0xFEB74C, opacity: 0.2, transparent: true });
 
     // rollover mesh
     const rolloverGeo = new THREE.BoxBufferGeometry(CELL_SIZE, 400, CELL_SIZE);
     rolloverMaterial = new THREE.MeshBasicMaterial({ color: 0xDD0000, opacity: 0.5, transparent:true });
     rolloverMesh = new THREE.Mesh(rolloverGeo, rolloverMaterial);
+    startingMesh = new THREE.Mesh(rolloverGeo, rolloverMaterial);
     scene.add(rolloverMesh);
+    scene.add(startingMesh);
 
     // wall meshes
     // TODO: remove this, just make larger meshes as needed
@@ -145,48 +148,25 @@ function onMouseUp(event) {
     }
 
     // if startingPoint is null, no drag was started
-    if (startingPoint === null)
+    // if rolloverMesh.y is negative, there is no endpoint
+    if (startingPoint === null || rolloverMesh.y < 0) {
+        startingPoint = null;
         return;
-
-    for (let i = 0; i < wallLength; i++) {
-        let hoverCell = hoverWall[i];
-        let wallCell = new THREE.Mesh(cubeGeo, cubeMaterial);
-        wallCell.position.set(hoverCell.position.x, hoverCell.position.y, hoverCell.position.z);
-        wallCells.push(wallCell);
-        scene.add(wallCell);
-        hoverCell.position.z = -10000;
     }
-    wallLength = 0;
+
+    let line = new THREE.Line3(rolloverMesh.position, startingMesh.position);
+    let cubeGeo = new THREE.BoxBufferGeometry(CELL_SIZE, 400, line.distance() + CELL_SIZE);
+    let wallCell = new THREE.Mesh(cubeGeo, cubeMaterial);
+    
+    let lineCenter = new THREE.Vector3();
+    line.getCenter(lineCenter);
+    wallCell.position.set(lineCenter.x, lineCenter.y, lineCenter.z);
+    wallCell.lookAt(rolloverMesh.position);
+    
+    wallCells.push(wallCell);
+    scene.add(wallCell);
+
     startingPoint = null;
-}
-
-function gridCellsInLine(pos1, pos2) {
-    if (pos1 === null || pos2 === null)
-        return null;
-
-    let cells = [];
-
-    // TODO: this is gross, fix it
-
-    let diffX = Math.abs(pos1.x - pos2.x)+1;
-    let diffZ = Math.abs(pos1.z - pos2.z)+1;
-    if (diffX >= diffZ) {
-        if (pos1.x < pos2.x)
-            for (let i = 0; i < diffX; i++)
-                cells.push(new THREE.Vector3(pos1.x + i, pos1.y, pos1.z));
-        else
-            for (let i = 0; i < diffX; i++)
-                cells.push(new THREE.Vector3(pos2.x + i, pos1.y, pos1.z));
-    } else {
-        if (pos1.z < pos2.z)
-            for (let i = 0; i < diffZ; i++)
-                cells.push(new THREE.Vector3(pos1.x, pos1.y, pos1.z + i));
-        else
-            for (let i = 0; i < diffZ; i++)
-                cells.push(new THREE.Vector3(pos1.x, pos1.y, pos2.z + i));
-    }
-
-    return cells;
 }
 
 function animate() {
@@ -201,31 +181,45 @@ function render() {
     cameraScene.position.z = cameraScene.position.z * Math.cos(0.004) - cameraScene.position.x * Math.sin(0.004);
     cameraScene.lookAt(0, 0, 0);
 
+    // highlight starting cell
+    if (startingPoint !== null) {
+        const startingWorld = gridToWorld(startingPoint);
+        startingMesh.position.set(startingWorld.x, 200, startingWorld.z);
+    } else {
+        startingMesh.position.z = -10000;
+        startingMesh.up = new THREE.Vector3(0, 1, 0);
+    }
+
     // highlight hovered cell
     let gridPos = intersectPlane(mouse, mainCamera);
     if (gridPos !== null) {
         let worldPos = gridToWorld(gridPos);
-        rolloverMesh.position.set(worldPos.x, 200, worldPos.z);
+        worldPos.y = 200;
+        rolloverMesh.position.set(worldPos.x, worldPos.y, worldPos.z);
 
         if (startingPoint !== null) {
-            let cells = gridCellsInLine(startingPoint, gridPos);
+            rolloverMesh.lookAt(startingMesh.position);
+            startingMesh.lookAt(worldPos);
+        } else {
+            rolloverMesh.up = new THREE.Vector3(0, 1, 0);
+        }
+    } else {
+        rolloverMesh.position.z = -10000;
+    }
 
-            for (let i = 0; i < cells.length; i++) {
-                const cell = gridToWorld(cells[i]);
-                hoverWall[i].position.set(cell.x, 200, cell.z);
+    // reset wall transparencies
+    wallCells.forEach(cell => {
+        cell.material = cubeMaterial;
+    });
+
+    if (cameraMode !== 'top') {
+        // TODO: fix
+        raycaster.setFromCamera(new THREE.Vector3(0, 0, 0), mainCamera);
+        let intersects = raycaster.intersectObjects(wallCells);
+        if (intersects.length > 0) {
+            for (let i = 0; i < intersects.length; i++) {
+                intersects[i].object.material = cubeSeethrough;
             }
-
-            for (let i = cells.length; i < wallLength; i++) {
-                hoverWall[i].position.z = -10000;
-            }
-
-            wallLength = cells.length;
-        } else if (wallLength > 0) {
-            // dragging has stopped but wall still exists
-            for (let i = 0; i < wallLength; i++)
-                hoverWall[i].position.z = -10000;
-
-            wallLength = 0;
         }
     }
 
@@ -260,7 +254,7 @@ function worldToGrid(pos) {
     if (pos === null)
         return null;
 
-    const newPos = pos.clone().divideScalar(CELL_SIZE).floor()
+    const newPos = pos.clone().divideScalar(CELL_SIZE).addScalar(0.5).floor()
     // returns a Vector3 rather than Vector2 because i was mixing up y/z
     return new THREE.Vector3(newPos.x, pos.y, newPos.z);
 }
@@ -269,5 +263,6 @@ function worldToGrid(pos) {
 function gridToWorld(pos) {
     if (pos === null)
         return null;
-    return new THREE.Vector3(pos.x * CELL_SIZE + CELL_SIZE / 2, pos.y, pos.z * CELL_SIZE + CELL_SIZE / 2);
+    
+    return new THREE.Vector3(pos.x * CELL_SIZE, pos.y, pos.z * CELL_SIZE);
 }
