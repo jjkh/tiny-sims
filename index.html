@@ -4,11 +4,28 @@
     <meta charset="utf-8">
     <title>Tiny Sims</title>
     <style>
-      body { margin: 0; }
+      html, body {margin: 0; height: 100%; overflow: hidden; touch-action: none; }
       canvas { display: block; }
+      #drawingControls { position: fixed; top: 20px; left: 20px; width: 80px; margin: 20px; z-index: 100;}
+      #cameraControls { position: fixed; top: 20px; right: 20px; width: 80px; margin: 20px; z-index: 100;}
+      #displayControls { position: fixed; bottom: 20px; left: 20px; width: 160px; margin: 20px; z-index: 100;}
+      .tool-button { padding: 10px 20px; width: 100% }
+      .tool-selected { background: #142954; color: #FFFFFF; }
     </style>
   </head>
   <body>
+    <div id="drawingControls">
+      <button id="noToolButton" class="tool-button" onclick="setTool('none');">None</button>
+      <button id="makeWallButton" class="tool-button tool-selected" onclick="setTool('wall');">Wall</button>
+    </div>
+    <div id="cameraControls">
+      <button id="topCameraButton" class="tool-button tool-selected" onclick="setCamera('top');">Top</button>
+      <button id="sceneCameraButton" class="tool-button" onclick="setCamera('scene');">Scene</button>
+    </div>
+    <div id="displayControls">
+      <button id="wallTransparencyButton" class="tool-button tool-selected" onclick="toggleWallTransparency();">Transparent Walls</button>
+      <button id="sceneSpinningButton" class="tool-button tool-selected" onclick="sceneSpinning = !sceneSpinning; this.classList.toggle('tool-selected', sceneSpinning);">Rotate</button>
+    </div>
     <script src="js/three.js"></script>
     <script src="js/test.js"></script>
   </body>

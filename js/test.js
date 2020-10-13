@@ -5,8 +5,11 @@ var cubeMaterial;
 var rolloverMesh, rolloverMaterial;
 var objects = [];
 
-let cameraMode = 'top';
+let selectedTool = 'wall';
+let selectedCamera = 'top';
 let mainCamera;
+let wallTransparency = true;
+let sceneSpinning = true;
 
 const frustrumSize = 1100;
 let startingPoint = null;
@@ -80,9 +83,9 @@ function init() {
     document.body.appendChild(renderer.domElement);
 
     // event listeners
-    document.addEventListener('mousedown', onMouseDown, false);
-    document.addEventListener('mouseup', onMouseUp, false);
-    document.addEventListener('mousemove', onMouseMove, false);
+    document.addEventListener('pointerdown', onMouseDown, false);
+    document.addEventListener('pointerup', onMouseUp, false);
+    document.addEventListener('pointermove', onMouseMove, false);
     // document.addEventListener('keydown', onDocumentKeyDown, false);
     // document.addEventListener('keyup', onDocumentKeyUp, false);
     window.addEventListener('resize', onWindowResize, false);
@@ -103,43 +106,62 @@ function onWindowResize() {
 }
 
 function onMouseMove(event) {
-    event.preventDefault();
-
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
 }
 
 function onMouseDown(event) {
-    event.preventDefault();
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
 
-    // only register on left click
-    if (event.button !== 0)
+    if (selectedTool === 'wall') {
+        // set to grid pos if valid, otherwise null
+        startingPoint = intersectPlane(mouse, mainCamera);
+    }
+}
+
+const Tools = { 'none': 'noToolButton', 'wall': 'makeWallButton' };
+const Cameras = { 'top': [cameraTop, 'topCameraButton'] , 'scene': [cameraScene, 'sceneCameraButton'] };
+function setTool(newTool) {
+    // if clicked on already selected tool, reset to no tool
+    if (newTool === selectedTool)
+        newTool = 'none';
+    
+    document.getElementById(Tools[selectedTool]).classList.remove('tool-selected');
+
+    document.getElementById(Tools[newTool]).classList.add('tool-selected');
+    selectedTool = newTool;
+}
+
+function setCamera(newCamera) {
+    if (newCamera === selectedCamera)
         return;
+    
+    let [, old_id] = Cameras[selectedCamera]
+    let [camera, id] = Cameras[newCamera];
+    document.getElementById(old_id).classList.remove('tool-selected');
 
-    // set to grid pos if valid, otherwise null
-    startingPoint = intersectPlane(mouse, mainCamera);
+    document.getElementById(id).classList.add('tool-selected');
+    mainCamera = camera;
+    selectedCamera = newCamera;
+}
+
+function toggleWallTransparency() {
+    wallTransparency = !wallTransparency;
+    document.getElementById('wallTransparencyButton').classList.toggle('tool-selected', wallTransparency);
+
+    if (!wallTransparency) {
+        // reset wall transparencies
+        wallCells.forEach(cell => {
+            cell.material = cubeMaterial;
+        });
+    }
 }
 
 function onMouseUp(event) {
-    event.preventDefault();
-
-    // change perspective on non-left click
-    if (event.button !== 0) {
-        if (cameraMode === 'top') {
-            cameraMode = 'main';
-            mainCamera = cameraScene;
-        }
-        else {
-            cameraMode = 'top'
-            mainCamera = cameraTop;
-        }
-
-        return;
-    }
-
     // if startingPoint is null, no drag was started
     // if rolloverMesh.y is negative, there is no endpoint
-    if (startingPoint === null || rolloverMesh.y < 0) {
+    if (startingPoint === null || rolloverMesh.position.y < 0) {
         startingPoint = null;
         return;
     }
@@ -166,44 +188,50 @@ function animate() {
 }
 
 function render() {
-    // rotate perspective camera
-    cameraScene.position.x = cameraScene.position.x * Math.cos(0.004) + cameraScene.position.z * Math.sin(0.004);
-    cameraScene.position.z = cameraScene.position.z * Math.cos(0.004) - cameraScene.position.x * Math.sin(0.004);
-    cameraScene.lookAt(0, 0, 0);
+    if (sceneSpinning && selectedCamera === 'scene') {
+        // rotate perspective camera
+        cameraScene.position.x = cameraScene.position.x * Math.cos(0.004) + cameraScene.position.z * Math.sin(0.004);
+        cameraScene.position.z = cameraScene.position.z * Math.cos(0.004) - cameraScene.position.x * Math.sin(0.004);
+        cameraScene.lookAt(0, 0, 0);
+    }
 
     // highlight starting cell
-    if (startingPoint !== null) {
+    if (selectedTool === 'wall' && startingPoint !== null) {
         const startingWorld = gridToWorld(startingPoint);
         startingMesh.position.set(startingWorld.x, 200, startingWorld.z);
     } else {
-        startingMesh.position.z = -10000;
+        startingPoint = null;
+        startingMesh.position.y = -10000;
         startingMesh.up = new THREE.Vector3(0, 1, 0);
     }
+    if (selectedTool === 'wall') {
+        // highlight hovered cell
+        let gridPos = intersectPlane(mouse, mainCamera);
+        if (gridPos !== null) {
+            let worldPos = gridToWorld(gridPos);
+            worldPos.y = 200;
+            rolloverMesh.position.set(worldPos.x, worldPos.y, worldPos.z);
 
-    // highlight hovered cell
-    let gridPos = intersectPlane(mouse, mainCamera);
-    if (gridPos !== null) {
-        let worldPos = gridToWorld(gridPos);
-        worldPos.y = 200;
-        rolloverMesh.position.set(worldPos.x, worldPos.y, worldPos.z);
-
-        if (startingPoint !== null) {
-            rolloverMesh.lookAt(startingMesh.position);
-            startingMesh.lookAt(worldPos);
+            if (startingPoint !== null) {
+                rolloverMesh.lookAt(startingMesh.position);
+                startingMesh.lookAt(worldPos);
+            } else {
+                rolloverMesh.up = new THREE.Vector3(0, 1, 0);
+            }
         } else {
-            rolloverMesh.up = new THREE.Vector3(0, 1, 0);
+            rolloverMesh.position.y = -10000;
         }
     } else {
-        rolloverMesh.position.z = -10000;
+        rolloverMesh.position.y = -10000;
     }
-
-    // reset wall transparencies
-    wallCells.forEach(cell => {
-        cell.material = cubeMaterial;
-    });
-
+    
     // check for intersections between wall and camera
-    if (cameraMode !== 'top') {
+    if (wallTransparency && selectedCamera === 'scene') {
+        // reset wall transparencies
+        wallCells.forEach(cell => {
+            cell.material = cubeMaterial;
+        });
+
         wallCells.forEach(cell => {
             // if the wall is already transparent, we dont need to cast to it
             if (cell.material === cubeSeethrough)
