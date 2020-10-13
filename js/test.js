@@ -50,16 +50,6 @@ function init() {
     scene.add(rolloverMesh);
     scene.add(startingMesh);
 
-    // wall meshes
-    // TODO: remove this, just make larger meshes as needed
-    const hoverMaterial = new THREE.MeshBasicMaterial({ color: 0xAAAAAA });
-    for (let i = 0; i < GRID_DIV; i++) {
-        const newMesh = new THREE.Mesh(rolloverGeo, hoverMaterial);
-        newMesh.position.z = -10000;
-        hoverWall.push(newMesh);
-        scene.add(newMesh);
-    }
-
     // grid
     var gridHelper = new THREE.GridHelper(GRID_SIZE, GRID_DIV);
     scene.add(gridHelper);
@@ -212,15 +202,29 @@ function render() {
         cell.material = cubeMaterial;
     });
 
+    // check for intersections between wall and camera
     if (cameraMode !== 'top') {
-        // TODO: fix
-        raycaster.setFromCamera(new THREE.Vector3(0, 0, 0), mainCamera);
-        let intersects = raycaster.intersectObjects(wallCells);
-        if (intersects.length > 0) {
-            for (let i = 0; i < intersects.length; i++) {
-                intersects[i].object.material = cubeSeethrough;
+        wallCells.forEach(cell => {
+            // if the wall is already transparent, we dont need to cast to it
+            if (cell.material === cubeSeethrough)
+                return;
+            
+            // project the wall's centroid to 2d screen coordinates for raycasting
+            let pos = new THREE.Vector3();
+            pos = pos.setFromMatrixPosition(cell.matrixWorld);
+            pos.project(mainCamera);
+            
+            raycaster.setFromCamera(pos, mainCamera);
+            const intersects = raycaster.intersectObjects(wallCells);
+            // make all walls besides the backmost transparent
+            // intersects is ordered closest to farthest
+            if (intersects.length > 1) {
+                for (let i = 0; i < intersects.length-1; i++) {
+                    intersects[i].object.material = cubeSeethrough;
+                }
             }
-        }
+        });
+
     }
 
     renderer.render(scene, mainCamera);
