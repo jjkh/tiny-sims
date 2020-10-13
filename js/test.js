@@ -11,7 +11,7 @@ let mainCamera;
 let wallTransparency = true;
 let sceneSpinning = true;
 
-const frustrumSize = 1100;
+const frustrumSize = 1200;
 let startingPoint = null;
 let startingMesh;
 let hoverWall = [];
