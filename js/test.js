@@ -226,33 +226,34 @@ function render() {
     }
     
     // check for intersections between wall and camera
-    if (wallTransparency && selectedCamera === 'scene') {
+    if (wallTransparency) {
         // reset wall transparencies
         wallCells.forEach(cell => {
             cell.material = cubeMaterial;
         });
 
-        wallCells.forEach(cell => {
-            // if the wall is already transparent, we dont need to cast to it
-            if (cell.material === cubeSeethrough)
-                return;
-            
-            // project the wall's centroid to 2d screen coordinates for raycasting
-            let pos = new THREE.Vector3();
-            pos = pos.setFromMatrixPosition(cell.matrixWorld);
-            pos.project(mainCamera);
-            
-            raycaster.setFromCamera(pos, mainCamera);
-            const intersects = raycaster.intersectObjects(wallCells);
-            // make all walls besides the backmost transparent
-            // intersects is ordered closest to farthest
-            if (intersects.length > 1) {
-                for (let i = 0; i < intersects.length-1; i++) {
-                    intersects[i].object.material = cubeSeethrough;
+        if (selectedCamera === 'scene') {
+            wallCells.forEach(cell => {
+                // if the wall is already transparent, we dont need to cast to it
+                if (cell.material === cubeSeethrough)
+                    return;
+                
+                // project the wall's centroid to 2d screen coordinates for raycasting
+                let pos = new THREE.Vector3();
+                pos = pos.setFromMatrixPosition(cell.matrixWorld);
+                pos.project(mainCamera);
+                
+                raycaster.setFromCamera(pos, mainCamera);
+                const intersects = raycaster.intersectObjects(wallCells);
+                // make all walls besides the backmost transparent
+                // intersects is ordered closest to farthest
+                if (intersects.length > 1) {
+                    for (let i = 0; i < intersects.length-1; i++) {
+                        intersects[i].object.material = cubeSeethrough;
+                    }
                 }
-            }
-        });
-
+            });
+        }
     }
 
     renderer.render(scene, mainCamera);
